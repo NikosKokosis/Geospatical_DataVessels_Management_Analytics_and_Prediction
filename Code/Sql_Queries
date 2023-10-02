@@ -1,0 +1,308 @@
+-- Project - Geospatial Data Management and Analytics
+
+-- STEP 1)  Creation of thalassaDB
+
+-- In this step, we create a database named `thalassaDB` to store information about vessels.
+-- This database will serve as the foundation for storing and managing vessel-related data.
+-- We achieve this by using SQL commands to define a new database with a specific structure.
+
+-- Database Schema Creation
+-- We define the structure of our database,which includes multiple tables that will collectively store data
+-- related to vessels, their positions, vessel types, ports, and AIS (Automatic Identification System) antennas.
+-- Each table serves a specific purpose in organizing and managing the information in our project.
+
+-- The Positions table is designed to store information about the positions and characteristics of vessels at specific timestamps. 
+CREATE TABLE Positions (
+    id SERIAL PRIMARY KEY,
+    vessel_id TEXT,
+    t TIMESTAMP,
+    lon FLOAT,
+    lat FLOAT,
+    heading FLOAT,
+    course FLOAT,
+    speed FLOAT
+);
+
+-- The Vessels table stores essential information about each vessel in the database.
+CREATE TABLE Vessels (
+    id TEXT PRIMARY KEY,
+    type TEXT,
+    flag TEXT
+    
+);
+
+-- The VesselTypes table provides descriptions for various vessel types:
+CREATE TABLE VesselTypes (
+    code TEXT PRIMARY KEY,
+    description TEXT
+);
+
+-- The Ports table is used to store information about ports, including their names and geographic coordinates:
+CREATE TABLE Ports (
+    name TEXT PRIMARY KEY,
+    lon FLOAT,
+    lat FLOAT
+);
+
+-- The AISantenna table stores information about AIS antennas, which are used for vessel tracking:
+CREATE TABLE AISantenna (
+    id TEXT PRIMARY KEY,
+    lon FLOAT,
+    lat FLOAT
+);
+
+-- STEP 2) Populating Tables with Data
+
+-- In this step, we populate the tables created in Step 1 with data.
+-- The data will serve as the foundation for further analysis and operations in our project.
+-- We use the COPY command to load data from external sources, such as CSV files, into the respective tables.
+
+COPY Positions (id, vessel_id, t, lon, lat, heading, course, speed)
+FROM '../thalassaDB/Positions.csv'
+WITH (FORMAT CSV, HEADER true, DELIMITER ',');
+
+COPY Vessels (id, type, flag)
+FROM '../thalassaDB/Vessels.csv'
+WITH (FORMAT CSV, HEADER true, DELIMITER ',');
+
+COPY VesselTypes (code, description)
+FROM '../thalassaDB/VesselTypes.csv'
+WITH (FORMAT CSV, HEADER true, DELIMITER ',');
+
+COPY Ports (name, lon, lat)
+FROM '../thalassaDB/Ports.csv'
+WITH (FORMAT CSV, HEADER true, DELIMITER ',');
+
+-- Adding a Foreign Key Constraint to the Positions  and Vessels Tables
+
+-- We establish a relationship between the Positions table and the Vessels table.
+-- Specifically, we link the vessel_id column in the Positions table to the id column
+-- in the Vessels table using a foreign key constraint. This constraint ensures that the vessel_id values
+-- in the Positions table correspond to valid vessel IDs in the Vessels table.
+
+ALTER TABLE Positions
+ADD CONSTRAINT fk_positions_vessels
+FOREIGN KEY (vessel_id)
+REFERENCES Vessels (id);
+
+-- We do the same  between the Vessels table and the VesselTypes table.
+-- We link the type column in the Vessels table to the code column in the VesselTypes table
+-- using a foreign key constraint. This constraint enforces that the type values in the Vessels table
+-- correspond to valid vessel types in the VesselTypes table.
+
+ALTER TABLE Vessels
+ADD CONSTRAINT fk_vessels_vesseltypes
+FOREIGN KEY (type)
+REFERENCES VesselTypes (code);
+
+-- CREATE EXTENSION postgis;
+-- CREATE EXTENSION postgis_topology;
+
+-- Q1)
+
+-- We created a new column for Positions and with spatial capabilities.
+--  We leveraged PostgreSQL's spatial functions, such as ST_SetSRID and ST_MakePoint,
+-- to convert the plain lon and lat values into a spatial point. 
+-- We also set the SRID to 4326, indicating that we're using the WGS 84 coordinate system.
+
+ALTER TABLE Positions ADD COLUMN location_geometry GEOMETRY(Point, 4326);
+UPDATE Positions SET location_geometry = ST_SetSRID(ST_MakePoint(lon, lat), 4326);
+
+
+-- Q2)
+
+-- a,b) Initially, we manually populate the AISantenna and Ports tables with the necessary information using pgAdmin.
+-- After completing this manual data entry, we proceed to follow the same procedure outlined in Q1 for both tables.
+
+ALTER TABLE AISantenna ADD COLUMN geometry_point GEOMETRY(Point,4326);
+UPDATE AISantenna SET geometry_point = ST_SetSRID(ST_MakePoint(lon,lat),4326);
+
+ALTER TABLE ports ADD COLUMN geometry_point GEOMETRY(Point,4326);
+UPDATE ports SET geometry_point = ST_SetSRID(ST_MakePoint(lon,lat),4326);
+
+-- c)
+-- In this final part of our query for the 'ports' table, we're introducing a new dimension: polygons. Specifically, we're adding the 'geometry_polygon' column with the type GEOMETRY(MultiPolygon, 4326).
+-- For the 'PIRAEUS' port exclusively, we've leveraged the 'piraeus_port' shapefile,that we imported through QGIS, allowing us to explore intricate geometries for this specific port. This expansion opens up exciting possibilities for advanced spatial analysis.
+ 
+ALTER TABLE ports
+ADD COLUMN geometry_polygon GEOMETRY(MultiPolygon, 4326);
+
+UPDATE ports
+SET geometry_polygon = (SELECT geom FROM piraeus_port)
+WHERE name = 'PIRAEUS';
+
+-- STEP 3) Getting Familiarized with the Data Through Searches and Visualizations
+-- In this step, we dive into the data to gain insights and answer some intriguing questions.
+-- Let's see what we've got!
+
+-- Q3) 
+-- We're curious about the vessels that seem to be missing from our main 'Vessels' table. 
+-- Are there any 'vessel_id' values in the 'Positions' table that don't have a corresponding entry in 'Vessels'? Let's find out:
+
+SELECT COUNT(DISTINCT vessel_id) AS count_not_in_vessels
+FROM Positions
+WHERE vessel_id NOT IN (SELECT id FROM Vessels);
+
+-- As we can see, there are no vessels in tracking data without associated information in your vessel database,
+-- which is a positive outcome in terms of data consistency.
+
+-- Q4)
+-- First, we're enhancing the 'Positions' table by adding a new column called 'distance_in_meters' of type FLOAT.
+-- This column will hold the calculated distances in meters of each point from antennna of University
+
+ALTER TABLE Positions
+ADD COLUMN distance_in_meters FLOAT;
+
+-- Next, we're using PostgreSQL's spatial functions to calculate the distance in meters 
+-- between each vessel's position (specified by latitude and longitude) and the location of an AIS antenna. 
+-- We're transforming the coordinates to an appropriate spatial reference (SRID 2100) for accurate distance calculations in meters, cause (SRID 4326) is in degrees.
+
+UPDATE Positions
+SET distance_in_meters = ST_Distance(
+    ST_Transform(ST_SetSRID(ST_MakePoint(Positions.lon, Positions.lat), 4326), 2100),
+    ST_Transform((SELECT ST_SetSRID(ST_MakePoint(AISantenna.lon, AISantenna.lat), 4326) FROM AISantenna), 2100)
+);
+
+-- Finally, we're creating a new table named 'MinMaxPositions.' 
+-- This table contains the positions with the minimum and maximum values in the 'distance_in_meters' column
+-- from the 'Positions' table.
+
+CREATE TABLE MinMaxPositions AS
+(SELECT *
+FROM Positions
+WHERE distance_in_meters = (SELECT MIN(distance_in_meters) FROM Positions)
+LIMIT 1)
+
+UNION
+
+(SELECT *
+FROM Positions
+WHERE distance_in_meters = (SELECT MAX(distance_in_meters) FROM Positions)
+LIMIT 1);
+
+-- As a result of our analysis, we found that the vessels in our tracking data 
+-- exhibit a wide range of distances from the AIS antenna, 
+-- with the closest vessel located just 351 meters away 
+-- and the farthest vessel positioned approximately 55.6 kilometers (55,591 meters) from the antenna.
+
+
+-- Q5)
+-- In this query, we're enhancing the 'Vessels' table by adding a new column called 'type_description' of type TEXT. 
+-- This column will store descriptions corresponding to the vessel types.
+
+ALTER TABLE vessels
+ADD COLUMN type_description TEXT;
+
+UPDATE vessels
+SET type_description = (
+    SELECT description FROM vesseltypes 
+    WHERE vesseltypes.code = vessels.type);
+
+-- We are interested in vessels that have a speed greater than 30 units.
+-- To identify these vessels, we perform a query that retrieves all unique 'vessel_id' values
+-- from the 'positions' table where the speed exceeds 30.
+
+SELECT * FROM vessels WHERE vessels.id IN (SELECT DISTINCT vessel_id FROM positions WHERE positions.speed > 30)
+
+-- To gain further insights into the distribution of vessel types with speeds greater than 30,
+-- we group the vessels by type and type description and count the occurrences of each type.
+
+SELECT v.type,v.type_description, COUNT(*) AS type_count
+FROM vessels v
+WHERE v.id IN (
+    SELECT DISTINCT vessel_id
+    FROM positions
+    WHERE speed > 30
+)
+GROUP BY v.type,v.type_description
+ORDER BY type_count DESC;
+
+-- We found that only 18 distinct vessel IDs had recorded speeds exceeding 30 knots at least once in our dataset.
+-- We also found 10 different vessel types in our dataset, it's noteworthy that approximately 50% of the distinct vessel IDs with high speeds correspond to high-speed craft. 
+-- This observation highlights the prevalence of high-speed craft among vessels with rapid navigation.
+
+
+-- Q6)
+-- In this query, we're interested in vessels that meet the following criteria:
+-- - They were at the Port of Piraeus.
+-- - Their speed was 0.
+-- - Their vessel type falls within the range of 70 to 79 (codes of cargo).
+-- - 1st Case: The data was recorded between August 12 and August 19, 2019. 
+-- - 2nd Case:  The data was recorded between August 15 and August 18, 2019.
+
+-- The ST_Contains function allows us to filter vessels based on their location within the Port of Piraeus during the specified time frame.
+
+SELECT * 
+FROM vessels 
+WHERE vessels.id IN (SELECT DISTINCT vessel_id FROM positions p 
+	WHERE p.speed = 0 AND
+	ST_Contains((SELECT geometry_polygon FROM ports WHERE ports.name = 'PIRAEUS'),p.location_geometry)
+	AND p.t BETWEEN '2019-08-12' AND '2019-08-19')
+AND vessels.type BETWEEN '70' AND '79';
+
+SELECT * 
+FROM vessels 
+WHERE vessels.id IN (SELECT DISTINCT vessel_id FROM positions p 
+	WHERE p.speed = 0 AND
+	ST_Contains((SELECT geometry_polygon FROM ports WHERE ports.name = 'PIRAEUS'),p.location_geometry)
+	AND p.t BETWEEN '2019-08-15' AND '2019-08-18')
+AND vessels.type BETWEEN '70' AND '79';
+
+-- Both time Cases indicate that there are no vessels in your dataset that meet the specified criteria.
+
+
+-- Q7)
+-- First, we're creating a new table named piraeus_positions. 
+-- This table contains records of vessel positions that meet these criteria:
+-- - Vessel speed is greater than 0.
+-- - The vessel's location is within the Port of Piraeus.
+-- - The data was recorded between August 15, 2019, 20:00:00, and August 15, 2019, 21:00:00.
+
+CREATE TABLE piraeus_positions AS	
+SELECT location_geometry, vessel_id, t
+	FROM Positions p
+	WHERE p.speed > 0
+  	AND ST_Contains((SELECT geometry_polygon FROM ports WHERE ports.name = 'PIRAEUS'), p.location_geometry)
+  	AND p.t BETWEEN '2019-08-15 20:00:00' AND '2019-08-15 21:00:00'
+
+SELECT DISTINCT
+    p1.vessel_id AS vessel_id_1,
+    p2.vessel_id AS vessel_id_2
+FROM
+    piraeus_positions p1
+JOIN
+   piraeus_positions p2 ON p1.vessel_id < p2.vessel_id
+WHERE ST_Distance(ST_Transform(p1.location_geometry,2100), ST_Transform(p2.location_geometry,2100)) <= 0.5*1852
+    AND ABS(EXTRACT(EPOCH FROM (p1.t - p2.t))) <= 30;
+
+-- To identify pairs of vessels that were in close proximity to each other during the specified time frame.
+-- We're looking for vessels that:
+
+-- -Are distinct from each other.
+-- -Are within a certain distance threshold (0.5 nautical miles, approximately 926 meters) of each other.
+-- -Had their positions recorded within 30 seconds of each other.
+
+CREATE TABLE distinct_location_pairs AS
+SELECT DISTINCT ON (distinct_pairs.vessel_id_1, distinct_pairs.vessel_id_2)
+    distinct_pairs.vessel_id_1,
+    distinct_pairs.vessel_id_2,
+    ST_Transform(p1.location_geometry, 2100) AS geom1,
+    ST_Transform(p2.location_geometry, 2100) AS geom2
+FROM (
+    SELECT DISTINCT
+        p1.vessel_id AS vessel_id_1,
+        p2.vessel_id AS vessel_id_2
+    FROM
+        piraeus_positions p1
+    JOIN
+       piraeus_positions p2 ON p1.vessel_id < p2.vessel_id
+    WHERE ST_Distance(ST_Transform(p1.location_geometry,2100), ST_Transform(p2.location_geometry,2100)) <= 0.5*1852
+        AND ABS(EXTRACT(EPOCH FROM (p1.t - p2.t))) <= 30
+) AS distinct_pairs
+JOIN
+    piraeus_positions p1 ON distinct_pairs.vessel_id_1 = p1.vessel_id
+JOIN
+    piraeus_positions p2 ON distinct_pairs.vessel_id_2 = p2.vessel_id;
+
+-- As a result of our analysis, we identified a total of 39 unique pairs of vessels that were in close proximity to each other
+-- within the Port of Piraeus during a specific time frame on August 15, 2019.
