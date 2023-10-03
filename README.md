@@ -1,6 +1,6 @@
-- YourRepoName/
+- Geospatical_DataVessels_Management_Analytics_and_Prediction/
   - Code/
-    - Sql_Queries.ipynb
+    - Sql_Queries
     - EDA_and_DataCleaning.ipynb
     - Data_Enrichment.ipynb
     - Predict_the_Location.ipynb
@@ -11,11 +11,11 @@
 
 This project focuses on maritime data analysis and prediction, using real data collected from the Automatic Identification System (AIS) antenna located at the University of Piraeus. The goal is to gain insights into vessel movements and develop predictive models for ship trajectories. The project is divided into five main phases, each addressing different aspects of data processing, analysis, and prediction.
 
-## [Phase 1: Database Setup and Data Collection](Code/Sql_Queries.ipynb)
+## [Phase 1: Database Setup and Data Collection](Code/Sql_Queries)
 
 In the initial phase, a database named "thalassaDB" is created to store AIS data. The data is collected from real vessels within the antenna's range, focusing on passenger vessels that have visited Piraeus Port. Velocity filtering is applied to ensure that only vessels in motion are considered. The collected data is then organized and stored in a spatial database.
 
-## [Phase 2: Data Exploration and Database Queries](Code/Sql_Queries.ipynb)
+## [Phase 2: Data Exploration and Database Queries](Code/Sql_Queries)
 
 This phase involves exploring the collected data through SQL queries. The database is queried to answer various questions related to vessel information, distances, speeds, and port activities. Additional data, such as port locations and geometries, is manually added to enhance the database's completeness.
 
