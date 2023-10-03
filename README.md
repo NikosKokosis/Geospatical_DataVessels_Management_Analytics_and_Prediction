@@ -1,11 +1,16 @@
-- Geospatical_DataVessels_Management_Analytics_and_Prediction/
-  - Code/
-    - Sql_Queries
-    - EDA_and_DataCleaning.ipynb
-    - Data_Enrichment.ipynb
-    - Predict_the_Location.ipynb
-
 # Maritime Data Analysis and Prediction Project
+
+## Sections - Project Phases
+- [Maritime Data Analysis and Prediction Project](#maritime-data-analysis-and-prediction-project)
+  - [Sections - Project Phases](#sections---project-phases)
+  - [Project Overview](#project-overview)
+  - [Phase 1: Database Setup and Data Collection](#phase-1-database-setup-and-data-collection)
+  - [Phase 2: Data Exploration and Database Queries](#phase-2-data-exploration-and-database-queries)
+  - [Phase 3: Exploratory Data Analysis](#phase-3-exploratory-data-analysis)
+  - [Phase 4: Data Cleaning and Enrichment](#phase-4-data-cleaning-and-enrichment)
+  - [Phase 5: Trajectory Prediction](#phase-5-trajectory-prediction)
+  - [Conclusion](#conclusion)
+
 
 ## Project Overview
 
